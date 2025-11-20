@@ -22,15 +22,12 @@ var drawlayers = [true, true, true, true, true, true, true];
 
 presetLogLists=[
     ['cycle',],
-    ['ab', 'db', '_m1', '_rd', '_wr', '_mreq', '_iorq', 'State', 'pc', 'Fetch'],
-    ['a', 'f', 'bc', 'de', 'hl', 'ix', 'iy', 'sp'],
-    ['wz', 'ir'],
-    ['alubus', '-alua', '-alub', 'aluout', 'alulat'],
-    ['d_u', 'r_u', '-ubus', 'r_v', 'u_v', '-vbus', 'regbit', 'r_p', 'pcbit', 'rl_wr', 'rh_wr', 'r_x1'],
-    ['dp_dl', 'dl_dp', '-dlatch', 'dl_d', 'd_dl', '-dbus', 'instr', 'load_ir'],
-    ['a2', 'f2', 'bc2', 'de2', 'hl2'],
-    ['int', 'inta', 'nmi', 'sync_reset', 'async_reset'],
+    ['adr', 'data', 'm1', 'rd', 'wr', 'mreq', 'State', 'pc'],
+    ['acc', 'flags', 'bc', 'de', 'hl', 'sp'],
+    ['wz'],
 ];
+
+var clk_state = 0;
 
 // Override ChipSim getNodeValue() function to allow an estimate of capacitance
 // (number of connections) to be used when joining floating segments.
@@ -112,18 +109,15 @@ function stepBack(){
    if(cycle==0) return;
    showState(trace[--cycle].chip);
    setMem(trace[cycle].mem);
-   var clk = isNodeHigh(nodenames['clk']);
-   if(!clk) writeDataBus(mRead(readAddressBus()));
+   clk_state--;
+   clk_state &= 7;
    chipStatus();
 }
 
 // simulate a single clock phase with no update to graphics or trace
 function halfStep(){
-    var clk = isNodeHigh(nodenames['clk']);
     eval(clockTriggers[cycle]);
-    if (clk) {setLow('clk'); }
-    else {setHigh('clk'); }
-    // DMB: It's almost certainly wrong to execute these on both clock edges
+    advanceClkState();
     handleBusRead();
     handleBusWrite();
 }
@@ -133,12 +127,75 @@ function goUntilSyncOrWrite(){
     cycle++;
     while(
         !isNodeHigh(nodenames['clk']) ||
-            ( isNodeHigh(nodenames['_m1']) && isNodeHigh(nodenames['_wr']) )
+            ( !isNodeHigh(nodenames['m1']) && !isNodeHigh(nodenames['wr']) )
     ) {
         halfStep();
         cycle++;
     }
     chipStatus();
+}
+
+var clk_pattern = [
+    [0,1,0,1,1],
+    [1,1,0,0,0],
+    [1,1,0,0,0],
+    [1,1,0,0,0],
+    [1,0,0,0,0],
+    [1,0,0,0,0],
+    [1,0,1,0,1],
+    [1,0,1,0,1],
+];
+
+function applyClkState(){
+    var pat = clk_pattern[clk_state];
+    if(pat[3]) {
+        setHigh('main_clk');
+        setLow('main_clk_n');
+    } else {
+        setLow('main_clk');
+        setHigh('main_clk_n');
+    }
+    if(!isNodeHigh(nodenames['halt_n'])) {
+        setLow('adr_clk');
+        setHigh('adr_clk_n');
+        setLow('phi_clk_n');
+        setHigh('phi_clk');
+        setLow('t4_clk');
+        setHigh('t4_clk_n');
+        setLow('buke');
+    } else {
+        if(pat[0]) {
+            setHigh('adr_clk');
+            setLow('adr_clk_n');
+        } else {
+            setLow('adr_clk');
+            setHigh('adr_clk_n');
+        }
+        if(pat[1]) {
+            setHigh('phi_clk');
+            setLow('phi_clk_n');
+        } else {
+            setLow('phi_clk');
+            setHigh('phi_clk_n');
+        }
+        if(pat[2]) {
+            setHigh('t4_clk');
+            setLow('t4_clk_n');
+        } else {
+            setLow('t4_clk');
+            setHigh('t4_clk_n');
+        }
+        if(pat[4])
+            setHigh('buke');
+        else
+            setLow('buke');
+    }
+}
+
+function advanceClkState(){
+    clk_state++;
+    clk_state &= 7;
+    applyClkState();
 }
 
 function initChip(){
@@ -153,9 +210,18 @@ function initChip(){
     nodes[npwr].state = true;
     nodes[npwr].float = false;
     for(var tn in transistors) transistors[tn].on = false;
-    setLow(nodenamereset);
-    setHigh('clk');
-    setHigh('_busrq');
+    clk_state = 0;
+    setHigh('async_reset');
+    setHigh('sync_reset');
+    setLow('adr_clk');
+    setHigh('adr_clk_n');
+    setLow('phi_clk_n');
+    setHigh('phi_clk');
+    setLow('t4_clk');
+    setHigh('t4_clk_n');
+    setLow('main_clk');
+    setHigh('main_clk_n');
+    setLow('buke');
     setLow('int0');
     setLow('int1');
     setLow('int2');
@@ -166,9 +232,21 @@ function initChip(){
     setLow('int7');
     setLow('nmi');
     setLow('wake');
+    setLow('osc_stable');
+    setLow('syro');
+    setHigh('tutu');
+    setLow('umut');
+    setLow('unor');
     recalcNodeList(allNodes());
-    for(var i=0;i<31;i++){halfStep();} // avoid updating graphics and trace buffer before user code
-    setHigh(nodenamereset);
+    for(var i=0;i<16;i++){halfStep();} // avoid updating graphics and trace buffer before user code
+    setLow('async_reset');
+    for(var i=0;i<16;i++){halfStep();} // avoid updating graphics and trace buffer before user code
+    setHigh('osc_stable');
+    for(var i=0;i<8;i++){halfStep();} // avoid updating graphics and trace buffer before user code
+    setLow('sync_reset');
+    for(var i=0;i<8;i++){halfStep();} // avoid updating graphics and trace buffer before user code
+    setLow('osc_stable');
+    // At this point the CPU will let go of halt_n and we are good to go.
     refresh();
     cycle = 0;
     trace = Array();
@@ -178,109 +256,66 @@ function initChip(){
     if(ctrace)console.log('initChip done after', now()-start);
 }
 
-var prefix       = 0x00;
+var prefix_cb    = false;
 var opcode       = 0x00;
 var state        = 0;
 var last_rd_done = 1;
 
 function handleBusRead(){
-    if(!isNodeHigh(nodenames['_rd']) && !isNodeHigh(nodenames['_mreq'])) {
+    if(isNodeHigh(nodenames['rd']) && isNodeHigh(nodenames['mreq'])) {
         // Memory read
         var a = readAddressBus();
         var d = eval(readTriggers[a]);
         if(d == undefined)
             d = mRead(readAddressBus());
-        if(!isNodeHigh(nodenames['_m1'])) {
+        if(isNodeHigh(nodenames['m1'])) {
             eval(fetchTriggers[d]);
         }
         writeDataBus(d);
-    } else if(!isNodeHigh(nodenames['_m1']) && !isNodeHigh(nodenames['_iorq'])) {
-        // Interrupt acknownledge cycle, force 0xFF onto the bus
-        // In IM0 this is seen as JP (HL)
-        // In IM1 this is ignored
-        // In IM2 this is used as the low byte of the vector
-        // TODO: ideally this "vector" would be a configurable parameter
-        writeDataBus(0xe9);
     } else {
         // In all other cases we set the data bus to FF
         // as a crude indicateion that it's not being driven
         writeDataBus(0xff);
     }
 
-    // Prefix / displacement / opcode state machine, deals with:
-    //   CB <op>
-    //   ED <op>
-    //   [DD|FD]+ <op>
-    //   [DD|FD]+ CB <displacement> <op>
-
-    // Only advance the state machine on the falling edge of read
-    if (last_rd_done && !isNodeHigh(nodenames['_rd']) && !isNodeHigh(nodenames['_mreq'])) {
+    // Only advance the state machine on the rising edge of read
+    if (last_rd_done && isNodeHigh(nodenames['rd']) && isNodeHigh(nodenames['mreq'])) {
         switch (state) {
         case 0:
             // In state 0 we are ready to start a new instruction
-            if(!isNodeHigh(nodenames['_m1'])) {
-                prefix = 0;
+            if(isNodeHigh(nodenames['m1'])) {
+                prefix_cb = false;
                 opcode = d;
                 switch (d) {
-                case 0xcb: case 0xed:
+                case 0xcb:
                     state = 1;
-                    break;
-                case 0xdd: case 0xfd:
-                    state = 2;
                     break;
                 }
             } else {
                 // This case covers other reads in the instruction
-                prefix = 0;
+                prefix_cb = false;
                 opcode = -1;   // If opcode < 0, then no fetch will be displayed
             }
             break;
         case 1:
-            // In state 1 we have just seen the CB/ED prefix and expect the opcode
-            prefix = opcode; // The prefix(s) just seen
-            opcode = d;
-            state  = 0;
-            break;
-        case 2:
-            // In state 2 we have just seen the DD/FD prefix
-            prefix = opcode; // the prefix just seen
-            opcode = d;
-            switch (d) {
-            case 0xdd: case 0xfd:
-                state = 2;   // remain in state 1
-                break;
-            case 0xcb:
-                state = 3;
-                break;
-            default:
-                state = 0;
-                break;
-            }
-            break;
-        case 3:
-            // In state 3 we expect the displacement byte
-            prefix = (prefix << 8) | opcode; // The prefix(s) just seen
-            opcode = 0x100; // Trick the disassembler into marking fetch as DISP
-            state  = 4;
-            break;
-        case 4:
-            // In state 4 we expect the opcode
+            // In state 1 we have just seen the CB prefix and expect the opcode
+            prefix_cb = true;
             opcode = d;
             state  = 0;
             break;
         default:
-            // This should never be needd
+            // This should never be needed
             prefix = 0;
             opcode = -1;
             state  = 0;
             break;
         }
     }
-    last_rd_done = (isNodeHigh(nodenames['_rd']) || isNodeHigh(nodenames['_mreq']));
+    last_rd_done = (!isNodeHigh(nodenames['rd']) || !isNodeHigh(nodenames['mreq']));
 }
 
 function handleBusWrite(){
-    if(!isNodeHigh(nodenames['_wr'])){
+    if(isNodeHigh(nodenames['wr'])){
         var a = readAddressBus();
         var d = readDataBus();
         eval(writeTriggers[a]);
@@ -289,236 +324,39 @@ function handleBusWrite(){
     }
 }
 
-function readA() {
-    if (!isNodeHigh(nodenames['ex_af'])) {
-        return readBits('reg_aa', 8);
-    } else {
-        return readBits('reg_a', 8);
-    }
-}
+function readAddressBus(){return readBits('a',    16);}
+function readDataBus()   {return readBits('d',     8);}
+function readA()         {return readBits('reg_a', 8);}
+function readB()         {return readBits('reg_b', 8);}
+function readC()         {return readBits('reg_c', 8);}
+function readD()         {return readBits('reg_d', 8);}
+function readE()         {return readBits('reg_e', 8);}
+function readH()         {return readBits('reg_h', 8);}
+function readL()         {return readBits('reg_l', 8);}
+function readW()         {return readBits('reg_w', 8);}
+function readZ()         {return readBits('reg_z', 8);}
 
 function readF() {
-    if (!isNodeHigh(nodenames['ex_af'])) {
-        return readBits('reg_ff', 8);
-    } else {
-        return readBits('reg_f', 8);
-    }
+    return readBit('flag_c')    +
+           readBit('flag_h')<<1 +
+           readBit('flag_n')<<2 +
+           readBit('flag_z')<<3;
 }
 
-function readB() {
-    if (isNodeHigh(nodenames['ex_bcdehl'])) {
-        return readBits('reg_bb', 8);
-    } else {
-        return readBits('reg_b', 8);
-    }
-}
 
-function readC() {
-    if (isNodeHigh(nodenames['ex_bcdehl'])) {
-        return readBits('reg_cc', 8);
-    } else {
-        return readBits('reg_c', 8);
-    }
-}
-
-function readD() {
-    if (isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_hh', 8);
-        } else {
-            return readBits('reg_dd', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_h', 8);
-        } else {
-            return readBits('reg_d', 8);
-        }
-    }
-}
-
-function readE() {
-    if (isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_ll', 8);
-        } else {
-            return readBits('reg_ee', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_l', 8);
-        } else {
-            return readBits('reg_e', 8);
-        }
-    }
-}
-
-function readH() {
-    if (isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_dd', 8);
-        } else {
-            return readBits('reg_hh', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_d', 8);
-        } else {
-            return readBits('reg_h', 8);
-        }
-    }
-}
-
-function readL() {
-    if (isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_ee', 8);
-        } else {
-            return readBits('reg_ll', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_e', 8);
-        } else {
-            return readBits('reg_l', 8);
-        }
-    }
-}
-
-function readA2() {
-    if (isNodeHigh(nodenames['ex_af'])) {
-        return readBits('reg_aa', 8);
-    } else {
-        return readBits('reg_a', 8);
-    }
-}
-
-function readF2() {
-    if (isNodeHigh(nodenames['ex_af'])) {
-        return readBits('reg_ff', 8);
-    } else {
-        return readBits('reg_f', 8);
-    }
-}
-
-function readB2() {
-    if (!isNodeHigh(nodenames['ex_bcdehl'])) {
-        return readBits('reg_bb', 8);
-    } else {
-        return readBits('reg_b', 8);
-    }
-}
-
-function readC2() {
-    if (!isNodeHigh(nodenames['ex_bcdehl'])) {
-        return readBits('reg_cc', 8);
-    } else {
-        return readBits('reg_c', 8);
-    }
-}
-
-function readD2() {
-    if (!isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_hh', 8);
-        } else {
-            return readBits('reg_dd', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_h', 8);
-        } else {
-            return readBits('reg_d', 8);
-        }
-    }
-}
-
-function readE2() {
-    if (!isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_ll', 8);
-        } else {
-            return readBits('reg_ee', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_l', 8);
-        } else {
-            return readBits('reg_e', 8);
-        }
-    }
-}
-
-function readH2() {
-    if (!isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_dd', 8);
-        } else {
-            return readBits('reg_hh', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_d', 8);
-        } else {
-            return readBits('reg_h', 8);
-        }
-    }
-}
-
-function readL2() {
-    if (!isNodeHigh(nodenames['ex_bcdehl'])) {
-        if (isNodeHigh(nodenames['ex_dehl1'])) {
-            return readBits('reg_ee', 8);
-        } else {
-            return readBits('reg_ll', 8);
-        }
-    } else {
-        if (isNodeHigh(nodenames['ex_dehl0'])) {
-            return readBits('reg_e', 8);
-        } else {
-            return readBits('reg_l', 8);
-        }
-    }
-}
-
-function readI(){return readBits('reg_i', 8);}
-function readR(){return readBits('reg_r', 8);}
-function readW(){return readBits('reg_w', 8);}
-function readZ(){return readBits('reg_z', 8);}
-
-function readSP(){return (readBits('reg_sph', 8)<<8) + readBits('reg_spl', 8);}
-function readPC(){return (readBits('reg_pch', 8)<<8) + readBits('reg_pcl', 8);}
+function readSP() {return (readBits('reg_sph', 8)<<8) + readBits('reg_spl', 8);}
+function readPC() {return (readBits('reg_pch', 8)<<8) + readBits('reg_pcl', 8);}
 function readPCL(){return readBits('reg_pcl', 8);}
 function readPCH(){return readBits('reg_pch', 8);}
 
 function formatFstring(f){
     var result;
     result=
-        ((f & 0x80)?'S':'s') +
-        ((f & 0x40)?'Z':'z') +
-        ((f & 0x20)?'Y':'y') +
-        ((f & 0x10)?'H':'h') +
-        ((f & 0x08)?'X':'x') +
-        ((f & 0x04)?'P':'p') +
-        ((f & 0x02)?'N':'n') +
-        ((f & 0x01)?'C':'c');
+        ((f & 8)?'Z':'z') +
+        ((f & 4)?'N':'n') +
+        ((f & 2)?'H':'h') +
+        ((f & 1)?'C':'c');
     return result;
-}
-
-// The 6800 state control is something like a branching shift register
-// ... but not quite like that
-TCStates=[
-    "m1", "m2", "m3", "m4", "m5",
-    "t1", "t2", "t3", "t4", "t5", "t6",
-];
-
-function listActiveTCStates() {
-    var s=[];
-    for(var i=0;i<TCStates.length;i++){
-        var t=TCStates[i];
-        if (isNodeHigh(nodenames[t])) s.push(t.slice(0,3));
-    }
-    return s.join(" ");
 }
 
 function busToString(busname){
@@ -544,12 +382,11 @@ function busToString(busname){
     if(busname=='sp')
         return busToHex('reg_sph') + busToHex('reg_spl');
     if(busname=='State')
-        return listActiveTCStates();
-    // DMB: TODO
-    //   if(busname=='Execute')
-    //      return disassemblytoHTML(readBits('ir',8));
+        return 'M'+readBits('mcyc',3);
+    if(busname=='Execute')
+        return disassemblytoHTML(readBit(table_cb),readBits('opcode',8));
     if(busname=='Fetch')
-        return (!isNodeHigh(nodenames['_mreq']) && !isNodeHigh(nodenames['_rd']) && (opcode >= 0))?disassemblytoHTML(prefix,opcode):"";
+        return (isNodeHigh(nodenames['mreq']) && isNodeHigh(nodenames['rd']) && (opcode >= 0))?disassemblytoHTML(prefix_cb?1:0,opcode):"";
     if(busname[0]=="-"){
         // invert the value of the bus for display
         var value=busToHex(busname.slice(1))
@@ -566,17 +403,16 @@ function chipStatus(){
     var ab = readAddressBus();
     var machine1 =
         ' halfcyc:' + cycle +
-        ' clk:' + readBit('clk') +
-        ' AB:' + hexWord(ab) +
+        ' clk:' + "T"+((clk_state>>1)+1)+"."+(clk_state&1) +
+        ' ADR:' + hexWord(ab) +
         ' D:' + hexByte(readDataBus()) +
-        ' M1:' + readBit('_m1') +
-        ' RD:' + readBit('_rd') +
-        ' WR:' + readBit('_wr') +
-        ' MREQ:' + readBit('_mreq') +
-        ' IORQ:' + readBit('_iorq');
+        ' M1:' + readBit('m1') +
+        ' RD:' + readBit('rd') +
+        ' WR:' + readBit('wr') +
+        ' MREQ:' + readBit('mreq');
     var machine2 =
         ' PC:' + hexWord(readPC()) +
-        ' A:'  + hexByte(readA()) +
+        ' ACC:' + hexByte(readA()) +
         ' F:'  + formatFstring(readF()) +
         ' BC:' + hexByte(readB()) + hexByte(readC()) +
         ' DE:' + hexByte(readD()) + hexByte(readE()) +
@@ -587,8 +423,8 @@ function chipStatus(){
         'State: ' + busToString('State') +
         ' Hz: ' + estimatedHz().toFixed(1);
     if(typeof expertMode != "undefined") {
-        // machine3 += ' Exec: ' + busToString('Execute'); // no T-state info for 6800 yet
-        if(!isNodeHigh(nodenames['_m1']) && !isNodeHigh(nodenames['_mreq']) && !isNodeHigh(nodenames['_rd']))
+        // machine3 += ' Exec: ' + busToString('Execute');
+        if(isNodeHigh(nodenames['m1']) && isNodeHigh(nodenames['mreq']) && isNodeHigh(nodenames['rd']))
             machine3 += ' (Fetch: ' + busToString('Fetch') + ')';
         if(goldenChecksum != undefined)
             machine3 += " Chk:" + traceChecksum + ((traceChecksum==goldenChecksum)?" OK":" no match");
@@ -602,12 +438,12 @@ function chipStatus(){
 }
 
 // sanitised opcode for HTML output
-function disassemblytoHTML(prefix, opcode){
+function disassemblytoHTML(prefix_cb, opcode){
 
     var disassembly;
-    switch (prefix) {
-    case 0xCB:   disassembly = disassembly_cb;   break;
-    default:     disassembly = disassembly_00;   break;
+    switch (prefix_cb) {
+    case 1:  disassembly = disassembly_cb; break;
+    default: disassembly = disassembly_00; break;
     }
 
     var opstr=disassembly[opcode];

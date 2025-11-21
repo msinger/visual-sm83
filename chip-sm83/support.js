@@ -30,6 +30,8 @@ presetLogLists=[
 
 var clk_state = 0;
 
+function getNodename(id) {return Object.keys(nodenames).find(key => nodenames[key] == id);}
+
 // Override ChipSim recalcNode() function to implement active-low gate
 // enable of PMOS transistors.
 function recalcNode(node){
@@ -37,10 +39,15 @@ function recalcNode(node){
 	if(node==npwr) return;
 	getNodeGroup(node);
 	var newState = getNodeValue();
-	if(ctrace && (traceTheseNodes.indexOf(node)!=-1))
-		console.log('recalc', node, group);
+	if(ctrace && (traceTheseNodes.indexOf(node)!=-1)) {
+		var n = nodes[node];
+		console.log('recalc', node, getNodename(node), group, n.state, '->', newState);
+	}
 	group.forEach(function(i){
 		var n = nodes[i];
+		if(ctrace && i != node && (traceTheseNodes.indexOf(i)!=-1)) {
+			console.log('recalc', i, getNodename(i), 'because of', node, getNodename(node), group, n.state, '->', newState);
+		}
 		if(!n.float && n.state==newState) return;
 		n.state = newState;
 		n.float = false;
@@ -231,49 +238,44 @@ var clk_pattern = [
 	[1,0,1,0,1],
 ];
 
+// For writing instruction register, clocks must be changed in this order:
+//  T4 -> ADR -> MAIN
+
 function applyClkState(){
+	if(ctrace) console.log('apply clocks');
 	var pat = clk_pattern[clk_state];
+	var halt = !isNodeHigh(nodenames['halt_n']);
+	if(pat[2] && !halt) {
+		setHigh('t4_clk');
+		setLow('t4_clk_n');
+	} else {
+		setLow('t4_clk');
+		setHigh('t4_clk_n');
+	}
+	if(pat[1] || halt) {
+		setHigh('phi_clk');
+		setLow('phi_clk_n');
+	} else {
+		setLow('phi_clk');
+		setHigh('phi_clk_n');
+	}
+	if(pat[0] && !halt) {
+		setHigh('adr_clk');
+		setLow('adr_clk_n');
+	} else {
+		setLow('adr_clk');
+		setHigh('adr_clk_n');
+	}
+	if(pat[4] && !halt)
+		setHigh('buke');
+	else
+		setLow('buke');
 	if(pat[3]) {
 		setHigh('main_clk');
 		setLow('main_clk_n');
 	} else {
 		setLow('main_clk');
 		setHigh('main_clk_n');
-	}
-	if(!isNodeHigh(nodenames['halt_n'])) {
-		setLow('adr_clk');
-		setHigh('adr_clk_n');
-		setLow('phi_clk_n');
-		setHigh('phi_clk');
-		setLow('t4_clk');
-		setHigh('t4_clk_n');
-		setLow('buke');
-	} else {
-		if(pat[0]) {
-			setHigh('adr_clk');
-			setLow('adr_clk_n');
-		} else {
-			setLow('adr_clk');
-			setHigh('adr_clk_n');
-		}
-		if(pat[1]) {
-			setHigh('phi_clk');
-			setLow('phi_clk_n');
-		} else {
-			setLow('phi_clk');
-			setHigh('phi_clk_n');
-		}
-		if(pat[2]) {
-			setHigh('t4_clk');
-			setLow('t4_clk_n');
-		} else {
-			setLow('t4_clk');
-			setHigh('t4_clk_n');
-		}
-		if(pat[4])
-			setHigh('buke');
-		else
-			setLow('buke');
 	}
 }
 
@@ -485,7 +487,7 @@ function busToString(busname){
 		return busToHex('d');
 	if(busname=='acc')
 		return hexByte(readA());
-	if(busname=='f')
+	if(busname=='f' || busname=='flags')
 		return formatFstring(readF());
 	if(busname=='bc')
 		return hexByte(readB()) + hexByte(readC());
@@ -544,7 +546,7 @@ function chipStatus(){
 		'State: ' + busToString('State') +
 		' Hz: ' + estimatedHz().toFixed(1);
 	if(typeof expertMode != "undefined") {
-		// machine3 += ' Exec: ' + busToString('Execute');
+		machine3 += ' Exec: ' + busToString('Execute');
 		if(isNodeHigh(nodenames['m1']) && isNodeHigh(nodenames['rd']))
 			machine3 += ' (Fetch: ' + busToString('Fetch') + ')';
 		if(goldenChecksum != undefined)

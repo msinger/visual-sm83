@@ -30,6 +30,63 @@ presetLogLists=[
 
 var clk_state = 0;
 
+var suspendRecalcCount = 0;
+var nbaList = new Array();
+
+// List of flip-flop stages or latches that need to be handled like non-blocking assignments (NBA).
+var nbaNodes = new Array();
+/*
+nbaNodes[1117] = 1; // reg_ir[0] stage1
+nbaNodes[1082] = 1; // reg_ir[0] stage2
+nbaNodes[1235] = 1; // reg_ir[1] stage1
+nbaNodes[1196] = 1; // reg_ir[1] stage2
+nbaNodes[1353] = 1; // reg_ir[2] stage1
+nbaNodes[1318] = 1; // reg_ir[2] stage2
+nbaNodes[1467] = 1; // reg_ir[3] stage1
+nbaNodes[1436] = 1; // reg_ir[3] stage2
+nbaNodes[1588] = 1; // reg_ir[4] stage1
+nbaNodes[1553] = 1; // reg_ir[4] stage2
+nbaNodes[1708] = 1; // reg_ir[5] stage1
+nbaNodes[1669] = 1; // reg_ir[5] stage2
+nbaNodes[1827] = 1; // reg_ir[6] stage1
+nbaNodes[1792] = 1; // reg_ir[6] stage2
+nbaNodes[1939] = 1; // reg_ir[7] stage1
+nbaNodes[1909] = 1; // reg_ir[7] stage2
+*/
+
+function recalcNodeList(list){
+	if(suspendRecalcCount > 0){
+		list.forEach(function(nn){
+			if(recalcHash[nn] == 1)return;
+			recalclist.push(nn);
+			recalcHash[nn] = 1;
+		});
+		return;
+	}
+	recalclist = new Array();
+	recalcHash = new Array();
+	for(var j=0;j<100;j++){
+		if(list.length==0) {
+			applyNbaList(nbaList);
+			if(recalclist.length==0 && nbaList.length==0) return;
+		}
+		list.forEach(recalcNode);
+		list = recalclist;
+		recalclist = new Array();
+		recalcHash = new Array();
+	}
+}
+
+function applyNbaList(list){
+	nbaList = new Array();
+	list.forEach(function(state, nn){
+		applyNewState(nodes[nn], state);
+	});
+}
+
+function suspendRecalc() {suspendRecalcCount++;}
+function resumeRecalc()  {suspendRecalcCount--; recalcNodeList(recalclist);}
+
 function getNodename(id) {return Object.keys(nodenames).find(key => nodenames[key] == id);}
 
 // Override ChipSim recalcNode() function to implement active-low gate
@@ -48,13 +105,20 @@ function recalcNode(node){
 		if(ctrace && i != node && (traceTheseNodes.indexOf(i)!=-1)) {
 			console.log('recalc', i, getNodename(i), 'because of', node, getNodename(node), group, n.state, '->', newState);
 		}
-		if(!n.float && n.state==newState) return;
-		n.state = newState;
-		n.float = false;
-		n.gates.forEach(function(t){
-			if(n.state != t.pmos) turnTransistorOn(t);
-			else turnTransistorOff(t);});
+		if(nbaNodes[i] == 1)
+			nbaList[i] = newState;
+		else
+			applyNewState(n, newState);
 	});
+}
+
+function applyNewState(n, s){
+	if(!n.float && n.state==s) return;
+	n.state = s;
+	n.float = false;
+	n.gates.forEach(function(t){
+		if(n.state != t.pmos) turnTransistorOn(t);
+		else turnTransistorOff(t);});
 }
 
 // Override ChipSim getNodeValue() function to allow an estimate of capacitance
@@ -238,13 +302,11 @@ var clk_pattern = [
 	[1,0,1,0,1],
 ];
 
-// For writing instruction register, clocks must be changed in this order:
-//  T4 -> ADR -> MAIN
-
 function applyClkState(){
 	if(ctrace) console.log('apply clocks');
 	var pat = clk_pattern[clk_state];
 	var halt = !isNodeHigh(nodenames['halt_n']);
+	suspendRecalc();
 	if(pat[2] && !halt) {
 		setHigh('t4_clk');
 		setLow('t4_clk_n');
@@ -266,10 +328,6 @@ function applyClkState(){
 		setLow('adr_clk');
 		setHigh('adr_clk_n');
 	}
-	if(pat[4] && !halt)
-		setHigh('buke');
-	else
-		setLow('buke');
 	if(pat[3]) {
 		setHigh('main_clk');
 		setLow('main_clk_n');
@@ -277,6 +335,11 @@ function applyClkState(){
 		setLow('main_clk');
 		setHigh('main_clk_n');
 	}
+	if(pat[4] && !halt)
+		setHigh('buke');
+	else
+		setLow('buke');
+	resumeRecalc();
 }
 
 function advanceClkState(){

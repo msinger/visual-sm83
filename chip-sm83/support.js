@@ -288,54 +288,59 @@ function goUntilSyncOrWrite(){
 }
 
 var clk_pattern = [
-	[0,1,0,1,1],
-	[1,1,0,0,0],
-	[1,1,0,0,0],
-	[1,1,0,0,0],
+	[0,0,0,1,1],
 	[1,0,0,0,0],
 	[1,0,0,0,0],
-	[1,0,1,0,1],
-	[1,0,1,0,1],
+	[1,0,0,0,0],
+	[1,1,0,0,0],
+	[1,1,0,0,0],
+	[1,1,1,0,1],
+	[1,1,1,0,1],
 ];
 
 function applyClkState(){
 	if(ctrace) console.log('apply clocks');
 	var pat = clk_pattern[clk_state];
-	var halt = !isNodeHigh(nodenames['halt_n']);
-	suspendRecalc();
-	if(pat[2] && !halt) {
-		setHigh('t4_clk');
-		setLow('t4_clk_n');
-	} else {
-		setLow('t4_clk');
-		setHigh('t4_clk_n');
-	}
-	if(pat[1] || halt) {
-		setHigh('phi_clk');
-		setLow('phi_clk_n');
-	} else {
-		setLow('phi_clk');
-		setHigh('phi_clk_n');
-	}
-	if(pat[0] && !halt) {
-		setHigh('adr_clk');
-		setLow('adr_clk_n');
-	} else {
-		setLow('adr_clk');
-		setHigh('adr_clk_n');
-	}
-	if(pat[3]) {
-		setHigh('main_clk');
-		setLow('main_clk_n');
-	} else {
-		setLow('main_clk');
-		setHigh('main_clk_n');
-	}
-	if(pat[4] && !halt)
-		setHigh('buke');
-	else
-		setLow('buke');
-	resumeRecalc();
+	var halt = false;
+	var halt_after = !isNodeHigh(nodenames['halt_n']);
+	do {
+		halt = halt_after;
+		suspendRecalc();
+		if(pat[4] && !halt)
+			setHigh('buke');
+		else
+			setLow('buke');
+		if(pat[2] && !halt) {
+			setHigh('t4_clk');
+			setLow('t4_clk_n');
+		} else {
+			setLow('t4_clk');
+			setHigh('t4_clk_n');
+		}
+		if(pat[1] && !halt) {
+			setHigh('phi_clk_n');
+			setLow('phi_clk');
+		} else {
+			setLow('phi_clk_n');
+			setHigh('phi_clk');
+		}
+		if(pat[3]) {
+			setHigh('main_clk');
+			setLow('main_clk_n');
+		} else {
+			setLow('main_clk');
+			setHigh('main_clk_n');
+		}
+		if(pat[0] && !halt) {
+			setHigh('adr_clk');
+			setLow('adr_clk_n');
+		} else {
+			setLow('adr_clk');
+			setHigh('adr_clk_n');
+		}
+		resumeRecalc();
+		halt_after = !isNodeHigh(nodenames['halt_n']);
+	} while(halt != halt_after); // If halt_n changes due to clock changes, then re-evaluate the clock states.
 }
 
 function advanceClkState(){

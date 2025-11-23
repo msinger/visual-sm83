@@ -130,21 +130,17 @@ function getNodeValue(){
 	//    for the transistor that has the power rail directly connected to its
 	//    source, which is the case in SM83 its SR-latches. May not work for
 	//    other designs this way.
-	var gnd_idx = group.indexOf(ngnd);
-	var vdd_idx = group.indexOf(npwr);
-	var has_gnd = gnd_idx != -1;
-	var has_vdd = vdd_idx != -1;
+	var has_gnd = arrayContains(group, ngnd);
+	var has_vdd = arrayContains(group, npwr);
 	if(has_gnd && has_vdd) {
-		var gn = nodes[gnd_idx];
-		var pn = nodes[vdd_idx];
 		var gnd_str = 0.0;
 		var vdd_str = 0.0;
 		group.forEach(function(i){
 			var n = nodes[i];
 			n.gates.forEach(function(t){
-				if(t.on && !t.pmos && t.c1 == ngnd)
+				if(t.on && !t.pmos && t.c2 == ngnd)
 					gnd_str += (t.c1width + t.c2width) / t.gatewidth;
-				if(t.on && t.pmos && t.c1 == npwr)
+				if(t.on && t.pmos && t.c2 == npwr)
 					vdd_str += (t.c1width + t.c2width) / t.gatewidth / 2; // PMOS are half as strong usually
 			});
 		});

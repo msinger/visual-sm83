@@ -29,30 +29,8 @@ presetLogLists=[
 ];
 
 var clk_state = 0;
-
 var suspendRecalcCount = 0;
 var nbaList = new Array();
-
-// List of flip-flop stages or latches that need to be handled like non-blocking assignments (NBA).
-var nbaNodes = new Array();
-/*
-nbaNodes[1117] = 1; // reg_ir[0] stage1
-nbaNodes[1082] = 1; // reg_ir[0] stage2
-nbaNodes[1235] = 1; // reg_ir[1] stage1
-nbaNodes[1196] = 1; // reg_ir[1] stage2
-nbaNodes[1353] = 1; // reg_ir[2] stage1
-nbaNodes[1318] = 1; // reg_ir[2] stage2
-nbaNodes[1467] = 1; // reg_ir[3] stage1
-nbaNodes[1436] = 1; // reg_ir[3] stage2
-nbaNodes[1588] = 1; // reg_ir[4] stage1
-nbaNodes[1553] = 1; // reg_ir[4] stage2
-nbaNodes[1708] = 1; // reg_ir[5] stage1
-nbaNodes[1669] = 1; // reg_ir[5] stage2
-nbaNodes[1827] = 1; // reg_ir[6] stage1
-nbaNodes[1792] = 1; // reg_ir[6] stage2
-nbaNodes[1939] = 1; // reg_ir[7] stage1
-nbaNodes[1909] = 1; // reg_ir[7] stage2
-*/
 
 function recalcNodeList(list){
 	if(suspendRecalcCount > 0){

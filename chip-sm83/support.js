@@ -517,12 +517,11 @@ function readW()         {return readBits('reg_w', 8);}
 function readZ()         {return readBits('reg_z', 8);}
 
 function readF() {
-	return readBit('flag_c')    +
-	       readBit('flag_h')<<1 +
-	       readBit('flag_n')<<2 +
-	       readBit('flag_z')<<3;
+	return readBit('flag_c')      |
+	       (readBit('flag_h')<<1) |
+	       (readBit('flag_n')<<2) |
+	       (readBit('flag_z')<<3);
 }
-
 
 function readSP() {return (readBits('reg_sph', 8)<<8) + readBits('reg_spl', 8);}
 function readPC() {return (readBits('reg_pch', 8)<<8) + readBits('reg_pcl', 8);}
@@ -530,13 +529,10 @@ function readPCL(){return readBits('reg_pcl', 8);}
 function readPCH(){return readBits('reg_pch', 8);}
 
 function formatFstring(f){
-	var result;
-	result=
-		((f & 8)?'Z':'z') +
-		((f & 4)?'N':'n') +
-		((f & 2)?'H':'h') +
-		((f & 1)?'C':'c');
-	return result;
+	return ((f & 8)?'Z':'z') +
+	       ((f & 4)?'N':'n') +
+	       ((f & 2)?'H':'h') +
+	       ((f & 1)?'C':'c');
 }
 
 function busToString(busname){

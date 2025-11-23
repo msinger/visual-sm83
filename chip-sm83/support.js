@@ -362,17 +362,18 @@ function initChip(){
 	nodes[npwr].float = false;
 	for(var tn in transistors) transistors[tn].on = false;
 	clk_state = 0;
+	suspendRecalcCount = 1;
 	setHigh('async_reset');
 	setLow('sync_reset');
-	setLow('adr_clk');
-	setHigh('adr_clk_n');
-	setLow('phi_clk_n');
-	setHigh('phi_clk');
+	setLow('buke');
 	setLow('t4_clk');
 	setHigh('t4_clk_n');
+	setLow('phi_clk_n');
+	setHigh('phi_clk');
 	setLow('main_clk');
 	setHigh('main_clk_n');
-	setLow('buke');
+	setLow('adr_clk');
+	setHigh('adr_clk_n');
 	setLow('int0');
 	setLow('int1');
 	setLow('int2');
@@ -388,6 +389,7 @@ function initChip(){
 	setHigh('tutu');
 	setLow('umut');
 	setLow('unor');
+	suspendRecalcCount = 0;
 	recalcNodeList(allNodes());
 	for(var i=0;i<8;i++){halfStep();} // avoid updating graphics and trace buffer before user code
 	setHigh('sync_reset');

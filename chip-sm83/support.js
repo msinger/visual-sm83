@@ -199,6 +199,29 @@ function drawSeg(ctx, seg){
 	}
 }
 
+// Override ChipSim hitBufferNode() and findNodeNumber(), because we need more than 12 bits
+// for node numbers.
+function hitBufferNode(ctx, i, w){
+	var low = hexdigit(i&0xf);
+	var mid = hexdigit((i>>8)&0xf) + hexdigit((i>>4)&0xf);
+	var high = hexdigit((i>>12)&0xf);
+	ctx.fillStyle = '#'+high+'F'+mid+low+'F';
+	for(i in w) {
+		drawSeg(ctx, w[i]);
+		ctx.fill();
+	}
+}
+
+function findNodeNumber(x,y){
+	var ctx = hitbuffer.getContext('2d');
+	var pixels = ctx.getImageData(x*grCanvasSize/600, y*grCanvasSize/600, 2, 2).data;
+	if(pixels[0]==0) return -1;
+	var high = pixels[0]>>4;
+	var mid = pixels[1];
+	var low = pixels[2]>>4;
+	return (high<<12)+(mid<<4)+low;
+}
+
 function setupTransistors(){
 	for(i in transdefs){
 		var tdef = transdefs[i];

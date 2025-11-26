@@ -114,8 +114,9 @@ function getNodeValue(){
 		var gnd_str = 0.0;
 		var vdd_str = 0.0;
 		group.forEach(function(i){
+			if (i == ngnd || i == npwr) return;
 			var n = nodes[i];
-			n.gates.forEach(function(t){
+			n.c1c2s.forEach(function(t){
 				if(t.on && !t.pmos && t.c2 == ngnd)
 					gnd_str += (t.c1width + t.c2width) / t.gatewidth;
 				if(t.on && t.pmos && t.c2 == npwr)

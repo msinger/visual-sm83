@@ -23,12 +23,12 @@ var drawlayers = [true, true, true, true, true, true, true];
 presetLogLists=[
 	['cycle',],
 	['adr', 'data', 'm1', 'rd', 'wr', 'pc', 'Fetch', 'Execute', 'State'],
-	['acc', 'flags', 'bc', 'de', 'hl', 'sp'],
-	['wz'],
-	['mreq'],
+	['acc', 'flags', 'bc', 'de', 'hl', 'sp', 'wz'],
+	['mreq', 'pwron_reset', 'sys_reset', 'wake', 'clk_ready', 'halt', 'stop'],
+	['nmi', 'ime', 'ie', 'int', 'inta', 'in_intr', 'int_vector'],
 ];
 
-var clk_state = 0;
+var tclk_state = 0;
 var suspendRecalcCount = 0;
 var nbaList = new Array();
 
@@ -263,8 +263,8 @@ function stepBack(){
 	if(cycle==0) return;
 	showState(trace[--cycle].chip);
 	setMem(trace[cycle].mem);
-	clk_state--;
-	clk_state &= 7;
+	tclk_state--;
+	tclk_state &= 7;
 	chipStatus();
 }
 
@@ -279,10 +279,8 @@ function halfStep(){
 function goUntilSyncOrWrite(){
 	halfStep();
 	cycle++;
-	while(
-		!isNodeHigh(nodenames['clk']) ||
-			( !isNodeHigh(nodenames['m1']) && !isNodeHigh(nodenames['wr']) )
-	) {
+	while((isNodeHigh(nodenames['halt_n']) && isNodeHigh(nodenames['stop_n'])) &&
+	      ((tclk_state != 7) || (!isNodeHigh(nodenames['m1']) && !isNodeHigh(nodenames['wr'])))) {
 		halfStep();
 		cycle++;
 	}
@@ -290,55 +288,60 @@ function goUntilSyncOrWrite(){
 }
 
 var clk_pattern = [
-	[0,0,0,1,1],
-	[1,0,0,0,0],
-	[1,0,0,0,0],
-	[1,0,0,0,0],
-	[1,1,0,0,0],
-	[1,1,0,0,0],
-	[1,1,1,0,1],
-	[1,1,1,0,1],
+	//          W
+	//    E  D  R  P
+	// C  X  A  I  C
+	// L  E  T  T  H
+	// K  C  A  E  #
+	[  1, 0, 0, 0, 1  ], // T1+
+	[  0, 1, 0, 0, 0  ], // T1-
+	[  0, 1, 0, 0, 0  ], // T2+
+	[  0, 1, 0, 0, 0  ], // T2-
+	[  0, 1, 1, 0, 0  ], // T3+
+	[  0, 1, 1, 0, 0  ], // T3-
+	[  0, 1, 1, 1, 1  ], // T4+
+	[  0, 1, 1, 1, 1  ]  // T4-
 ];
 
 function applyClkState(){
 	if(ctrace) console.log('apply clocks');
-	var pat = clk_pattern[clk_state];
+	var pat = clk_pattern[tclk_state];
 	var halt = false;
 	var halt_after = !isNodeHigh(nodenames['halt_n']);
 	do {
 		halt = halt_after;
 		suspendRecalc();
 		if(pat[4] && !halt)
-			setHigh('buke');
+			setHigh('pch_phase_n');
 		else
-			setLow('buke');
-		if(pat[2] && !halt) {
-			setHigh('t4_clk');
-			setLow('t4_clk_n');
+			setLow('pch_phase_n');
+		if(pat[3] && !halt) {
+			setHigh('write_phase');
+			setLow('write_phase_n');
 		} else {
-			setLow('t4_clk');
-			setHigh('t4_clk_n');
+			setLow('write_phase');
+			setHigh('write_phase_n');
+		}
+		if(pat[2] && !halt) {
+			setHigh('data_phase');
+			setLow('data_phase_n');
+		} else {
+			setLow('data_phase');
+			setHigh('data_phase_n');
+		}
+		if(pat[0]) {
+			setHigh('clk');
+			setLow('clk_n');
+		} else {
+			setLow('clk');
+			setHigh('clk_n');
 		}
 		if(pat[1] && !halt) {
-			setHigh('phi_clk_n');
-			setLow('phi_clk');
+			setHigh('exec_phase');
+			setLow('exec_phase_n');
 		} else {
-			setLow('phi_clk_n');
-			setHigh('phi_clk');
-		}
-		if(pat[3]) {
-			setHigh('main_clk');
-			setLow('main_clk_n');
-		} else {
-			setLow('main_clk');
-			setHigh('main_clk_n');
-		}
-		if(pat[0] && !halt) {
-			setHigh('adr_clk');
-			setLow('adr_clk_n');
-		} else {
-			setLow('adr_clk');
-			setHigh('adr_clk_n');
+			setLow('exec_phase');
+			setHigh('exec_phase_n');
 		}
 		resumeRecalc();
 		halt_after = !isNodeHigh(nodenames['halt_n']);
@@ -346,8 +349,8 @@ function applyClkState(){
 }
 
 function advanceClkState(){
-	clk_state++;
-	clk_state &= 7;
+	tclk_state++;
+	tclk_state &= 7;
 	applyClkState();
 }
 
@@ -363,19 +366,19 @@ function initChip(){
 	nodes[npwr].state = true;
 	nodes[npwr].float = false;
 	for(var tn in transistors) transistors[tn].on = false;
-	clk_state = 0;
+	tclk_state = 0;
 	suspendRecalcCount = 1;
-	setHigh('async_reset');
-	setLow('sync_reset');
-	setLow('buke');
-	setLow('t4_clk');
-	setHigh('t4_clk_n');
-	setLow('phi_clk_n');
-	setHigh('phi_clk');
-	setLow('main_clk');
-	setHigh('main_clk_n');
-	setLow('adr_clk');
-	setHigh('adr_clk_n');
+	setHigh('pwron_reset');
+	setLow('sys_reset');
+	setLow('pch_phase_n');
+	setLow('write_phase');
+	setHigh('write_phase_n');
+	setLow('data_phase');
+	setHigh('data_phase_n');
+	setLow('clk');
+	setHigh('clk_n');
+	setLow('exec_phase');
+	setHigh('exec_phase_n');
 	setLow('int0');
 	setLow('int1');
 	setLow('int2');
@@ -386,23 +389,23 @@ function initChip(){
 	setLow('int7');
 	setLow('nmi');
 	setLow('wake');
-	setLow('osc_stable');
-	setLow('syro');
-	setHigh('tutu');
-	setLow('umut');
-	setLow('unor');
+	setLow('clk_ready');
+	setLow('internal_access');
+	setLow('shadow_access');
+	setLow('shadow_override');
+	setLow('oe_n');
 	suspendRecalcCount = 0;
 	recalcNodeList(allNodes());
 	for(var i=0;i<8;i++){halfStep();} // avoid updating graphics and trace buffer before user code
-	setHigh('sync_reset');
+	setHigh('sys_reset');
 	for(var i=0;i<16;i++){halfStep();} // avoid updating graphics and trace buffer before user code
-	setLow('async_reset');
+	setLow('pwron_reset');
 	for(var i=0;i<16;i++){halfStep();} // avoid updating graphics and trace buffer before user code
-	setHigh('osc_stable');
+	setHigh('clk_ready');
 	for(var i=0;i<8;i++){halfStep();} // avoid updating graphics and trace buffer before user code
-	setLow('sync_reset');
+	setLow('sys_reset');
 	for(var i=0;i<8;i++){halfStep();} // avoid updating graphics and trace buffer before user code
-	setLow('osc_stable');
+	setLow('clk_ready');
 	// At this point the CPU will let go of halt_n and we are good to go.
 	refresh();
 	cycle = 0;
@@ -565,6 +568,18 @@ function busToString(busname){
 		return busToHex('reg_pch') + busToHex('reg_pcl');
 	if(busname=='sp')
 		return busToHex('reg_sph') + busToHex('reg_spl');
+	if(busname=='ime')
+		return isNodeHigh(nodenames['ime_n'])?'0':'1';
+	if(busname=='ie')
+		return busToHex('reg_ie');
+	if(busname=='int_vector'){
+		var v = (isNodeHigh(nodenames['int_vector3'])?0x08:0) +
+		        (isNodeHigh(nodenames['int_vector4'])?0x10:0) +
+		        (isNodeHigh(nodenames['int_vector5'])?0x20:0) +
+		        (isNodeHigh(nodenames['int_vector6'])?0x40:0) +
+		        (isNodeHigh(nodenames['int_vector7'])?0x80:0);
+		return hexByte(v);
+	}
 	if(busname=='State')
 		return 'M'+readBits('mcyc',3);
 	if(busname=='Execute')
@@ -583,7 +598,7 @@ function busToString(busname){
 	}
 }
 
-function clkToStr(c){
+function tclkToStr(c){
 	return 'T'+((c>>1)+1)+((c&1)?'-':'+');
 }
 
@@ -591,7 +606,7 @@ function chipStatus(){
 	var ab = readAddressBus();
 	var machine1 =
 		' halfcyc:' + cycle +
-		' clk:' + clkToStr(clk_state) +
+		' tclk:' + tclkToStr(tclk_state) +
 		' ADR:' + hexWord(ab) +
 		' D:' + hexByte(readDataBus()) +
 		' M1:' + readBit('m1') +

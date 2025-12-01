@@ -547,7 +547,7 @@ function busToString(busname){
 	// returns an appropriate string representation
 	// some 'signal names' are CPU-specific aliases to user-friendly string output
 	if(busname=='cycle')
-		return cycle>>1;
+		return (cycle>>1)+' '+tclkToStr(tclk_state);
 	if(busname=='adr')
 		return busToHex('a');
 	if(busname=='data')
@@ -599,7 +599,7 @@ function busToString(busname){
 }
 
 function tclkToStr(c){
-	return 'T'+((c>>1)+1)+((c&1)?'-':'+');
+	return 'T'+((c>>1)+1)+((c&1)?'&perp;':'&top;');
 }
 
 function chipStatus(){

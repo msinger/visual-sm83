@@ -368,6 +368,7 @@ function initChip(){
 	for(var tn in transistors) transistors[tn].on = false;
 	tclk_state = 0;
 	suspendRecalcCount = 1;
+	setLow('test_freeze');
 	setHigh('pwron_reset');
 	setLow('sys_reset');
 	setLow('pch_phase_n');

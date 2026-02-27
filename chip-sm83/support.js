@@ -655,6 +655,127 @@ function disassemblytoHTML(prefix_cb, opcode){
 	return opstr.replace(/ /,'&nbsp;');
 }
 
+function setupParams(){
+	if(location.search=="")
+		return;
+	var queryParts=location.search.slice(1).split('&');
+	var panx;
+	var pany;
+	var zoom;
+	var userAddress;
+	for(var i=0;i<queryParts.length;i++){
+		var params=queryParts[i].split("=");
+		if(params.length!=2){
+			if(loglevel>0)
+				console.log('malformed parameters',params);
+			break;
+		}
+		var name=params[0];
+		var value=params[1].replace(/\/$/,""); // chrome sometimes adds trailing slash
+		// be (relatively) forgiving in what we accept
+		//
+		// user interface mode control
+		if(name=="loglevel" && parseInt(value)!=NaN){
+			updateLoglevel(value);
+		} else if(name=="logmore" && value!=""){
+			updateLogList(value);
+		} else if(name=="headlesssteps" && parseInt(value)!=NaN){
+			headlessSteps=parseInt(value);
+		} else if(name=="graphics" && value.indexOf("f")==0){
+			updateChipLayoutVisibility(false);
+		} else if(name=="canvas" && parseInt(value)!=NaN){
+			grCanvasSize=value;
+		// suppress simulation (for layout viewing only on slow browsers)
+		} else if(name=="nosim" && value.indexOf("t")==0){
+			noSimulation=true;
+		} else
+		// place the graphics window at a point of interest
+		if(name=="panx" && parseInt(value)!=NaN){
+			panx=parseInt(value);
+		} else if(name=="pany" && parseInt(value)!=NaN){
+			pany=parseInt(value);
+		} else if(name=="zoom" && parseInt(value)!=NaN){
+			zoom=parseInt(value);
+		} else
+		// perform a search, highlight and zoom to object(s)
+		if(name=="find" && value.length>0){
+			findThese=value;
+		} else
+		// affix label with optional box to highlight an area of interest
+		if(name=="label" && value.length>0){
+			labelThese.push(value.split(","));
+		} else
+		// load a test program: Address and Data
+		if(name=="a" && parseInt(value,16)!=NaN){
+			userAddress=parseInt(value,16);
+		} else if(name=="d" && value.match(/[0-9a-fA-F]*/)[0].length==value.length){
+			for(var j=0;j<value.length;j+=2)
+				userCode[userAddress++]=parseInt(value.slice(j,j+2),16);
+		} else
+		// setup input pin events, breakpoints, watchpoints
+		if(name=="int00" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int0');"].join("");
+		} else if(name=="int01" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int0');"].join("");
+		} else if(name=="int10" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int1');"].join("");
+		} else if(name=="int11" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int1');"].join("");
+		} else if(name=="int20" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int2');"].join("");
+		} else if(name=="int21" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int2');"].join("");
+		} else if(name=="int30" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int3');"].join("");
+		} else if(name=="int31" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int3');"].join("");
+		} else if(name=="int40" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int4');"].join("");
+		} else if(name=="int41" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int4');"].join("");
+		} else if(name=="int50" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int5');"].join("");
+		} else if(name=="int51" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int5');"].join("");
+		} else if(name=="int60" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int6');"].join("");
+		} else if(name=="int61" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int6');"].join("");
+		} else if(name=="int70" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('int7');"].join("");
+		} else if(name=="int71" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('int7');"].join("");
+		} else if(name=="nmi0" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('nmi');"].join("");
+		} else if(name=="nmi1" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('nmi');"].join("");
+		} else if(name=="wake0" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setLow('wake');"].join("");
+		} else if(name=="wake1" && parseInt(value)!=NaN){
+			clockTriggers[value]=[clockTriggers[value],"setHigh('wake');"].join("");
+		//
+		} else if(name=="time" && parseInt(value)!=NaN){
+			eventTime=value;
+		} else if(name=="databus" && value==""){
+			clockTriggers[eventTime]=[clockTriggers[eventTime],"releaseDataBus();"].join("");
+		} else if(name=="databus" && parseInt(value)!=NaN){
+			clockTriggers[eventTime]=[clockTriggers[eventTime],"writeDataBus(0x"+value+");"].join("");
+		} else
+		// run a test program, and optionally check against a golden checksum
+		if(name=="steps" && parseInt(value)!=NaN){
+			userSteps=parseInt(value);
+			running=true;
+		} else if(name=="checksum" && parseInt(value,16)!=NaN){
+			goldenChecksum=(0x100000000+parseInt(value,16)).toString(16).slice(-8);
+		} else {
+			if(loglevel>0)
+				console.log('unrecognised parameters:',params);
+			break;
+		}
+	}
+	if(panx!=null && pany!=null && zoom!=null)
+		moveHereFirst=[panx,pany,zoom];
+}
 
 var disassembly_00={
 
